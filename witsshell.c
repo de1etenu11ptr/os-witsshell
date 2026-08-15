@@ -1,9 +1,36 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 #define BUFFERSIZE 1024
+#define MAXTOKENS 64
+
+int tokenize(char **tokens, int max_tokens, char *cmd, int cmd_len)
+{
+	char *token = cmd, quote;
+	int i = 0, is_quoted = 0, no_tokens = 0;
+
+	while (i <= cmd_len && no_tokens < max_tokens) {
+		if (is_quoted) {
+			if (cmd[i] == quote && cmd[i - 1] != '\\') {
+				is_quoted = 0;
+			}
+		} else if (cmd[i] == '"' || cmd[i] == '\'' || cmd[i] == '`') {
+			is_quoted = 1;
+			quote = cmd[i];
+		} else if (cmd[i] == ' ' || cmd[i] == '\0') {
+			cmd[i] = '\0';
+			tokens[no_tokens++] = token;
+			token = cmd + i + 1;
+		}
+		i++;
+	}
+
+	return no_tokens;
+}
+
 int get_input_string(char *buffer, int buffersize)
 {
 	int i = 0;
@@ -24,13 +51,18 @@ int get_input_string(char *buffer, int buffersize)
 
 void interactive_start()
 {
-	char buffer[BUFFERSIZE], char **tokens;
-	int cmd_len;
+	char buffer[BUFFERSIZE];
+	char **tokens = malloc(sizeof(char *) * MAXTOKENS);
+	int cmd_len, no_tokens;
 
 	printf("witsshell>");
 	fflush(stdout);
 	cmd_len = get_input_string(buffer, BUFFERSIZE);
 
+	no_tokens = tokenize(tokens, MAXTOKENS, buffer, cmd_len);
+	for (int i = 0; i < no_tokens; i++) {
+		printf("%d: %s\n", i, tokens[i]);
+	}
 }
 
 int main(int argc, char **argv)
