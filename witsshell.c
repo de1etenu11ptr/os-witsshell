@@ -31,6 +31,23 @@ int tokenize(char **tokens, int max_tokens, char *cmd, int cmd_len)
 	return no_tokens;
 }
 
+void token_preprocessor(char **tokens, int no_tokens)
+{
+	for (int i = 0; i < no_tokens; i++) {
+		char *token = tokens[i];
+		int read = 0, write = 0;
+
+		while (token[read]) {
+			if (token[read] == '"' || token[read] == '\'' || token[read] == '`') {
+				read++;
+				continue;
+			}
+			token[write++] = token[read++];
+		}
+		token[write] = '\0';
+	}
+}
+
 int get_input_string(char *buffer, int buffersize)
 {
 	int i = 0;
@@ -60,6 +77,7 @@ void interactive_start()
 	cmd_len = get_input_string(buffer, BUFFERSIZE);
 
 	no_tokens = tokenize(tokens, MAXTOKENS, buffer, cmd_len);
+	token_preprocessor(tokens, no_tokens);
 	for (int i = 0; i < no_tokens; i++) {
 		printf("%d: %s\n", i, tokens[i]);
 	}
