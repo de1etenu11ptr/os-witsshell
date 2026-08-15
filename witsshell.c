@@ -60,15 +60,21 @@ void token_preprocessor(char **tokens, int no_tokens)
 
 int get_input_string(char *buffer, int buffersize)
 {
-	int i = 0;
-	char c;
+	int i = 0, is_quoted;
+	char c, quote;
 
 	while (i < buffersize - 1) {
-		/* Consider the case where a multiline string is being entered that has
-		 * been introduced by some opening quote
-		 */
-		if ((c = fgetc(stdin)) == '\n')
+		if ((c = fgetc(stdin)) == '\n' && !is_quoted)
 			break;
+		else if (is_quoted && c == quote && buffer[i - 1] != '\\') {
+			is_quoted = 0;
+		} else if (c == '"' || c == '\'' || c == '`') {
+			is_quoted = 1;
+			quote = c;
+		} else if (c == '\n') {
+			buffer[i++] = ' ';
+			continue;
+		}
 		buffer[i++] = c;
 	}
 	buffer[i] = '\0';
