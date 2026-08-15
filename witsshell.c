@@ -7,6 +7,10 @@
 #define BUFFERSIZE 1024
 #define MAXTOKENS 64
 
+#define LOG_ERR(fmt, ...)                                             \
+	fprintf(stderr, "%s:%d (%s) - " fmt "\n", __FILE__, __LINE__, \
+		__func__ __VA_OPT__(, ) __VA_ARGS__)
+
 int tokenize(char **tokens, int max_tokens, char *cmd, int cmd_len)
 {
 	char *token = cmd, quote;
@@ -27,6 +31,11 @@ int tokenize(char **tokens, int max_tokens, char *cmd, int cmd_len)
 		}
 		i++;
 	}
+	if (is_quoted) {
+		LOG_ERR("Failed to tokenize due to the unmatched quote \"%c\"",
+			quote);
+		return 0;
+	}
 
 	return no_tokens;
 }
@@ -38,7 +47,8 @@ void token_preprocessor(char **tokens, int no_tokens)
 		int read = 0, write = 0;
 
 		while (token[read]) {
-			if (token[read] == '"' || token[read] == '\'' || token[read] == '`') {
+			if (token[read] == '"' || token[read] == '\'' ||
+			    token[read] == '`') {
 				read++;
 				continue;
 			}
@@ -76,7 +86,8 @@ void interactive_start()
 	fflush(stdout);
 	cmd_len = get_input_string(buffer, BUFFERSIZE);
 
-	no_tokens = tokenize(tokens, MAXTOKENS, buffer, cmd_len);
+	if ((no_tokens = tokenize(tokens, MAXTOKENS, buffer, cmd_len)) == 0)
+		return;
 	token_preprocessor(tokens, no_tokens);
 	for (int i = 0; i < no_tokens; i++) {
 		printf("%d: %s\n", i, tokens[i]);
