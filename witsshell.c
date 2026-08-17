@@ -12,6 +12,14 @@
 	fprintf(stderr, "%s:%d (%s) - " fmt "\n", __FILE__, __LINE__, \
 		__func__ __VA_OPT__(, ) __VA_ARGS__)
 
+void print_tokens(char **tokens, int no_tokens)
+{
+	for (int i = 0; i < no_tokens; i++) {
+		printf("arg %d: %s\n", i, tokens[i]);
+	}
+	fflush(stdout);
+}
+
 int tokenize(char **tokens, int max_tokens, char *cmd, int cmd_len)
 {
 	char *token = cmd, quote;
@@ -86,7 +94,7 @@ int get_input_string(char *buffer, int buffersize)
 	return i;
 }
 
-void execute_program(char **tokens, int no_tokens)
+void execute_program(char **tokens, int no_tokens, int _wait)
 {
 	pid_t pid = fork();
 	if (pid == 0) {
@@ -96,10 +104,21 @@ void execute_program(char **tokens, int no_tokens)
 		LOG_ERR("%s", strerror(errno));
 		_exit(errno);
 	} else if (pid > 0) {
-		waitpid(pid, NULL, 0);
+		if (_wait)
+			waitpid(pid, NULL, 0);
 	} else {
 		LOG_ERR("%s", strerror(errno));
 	}
+}
+
+void execute_sequential_program(char **tokens, int no_tokens)
+{
+	execute_program(tokens, no_tokens, 1);
+}
+
+void execute_background_program(char **tokens, int no_tokens)
+{
+	execute_program(tokens, no_tokens, 0);
 }
 
 void interactive_start()
@@ -109,17 +128,12 @@ void interactive_start()
 	int cmd_len, no_tokens;
 
 	printf("witsshell>");
-	fflush(stdout);
 	cmd_len = get_input_string(buffer, BUFFERSIZE);
 
 	if ((no_tokens = tokenize(tokens, MAXTOKENS, buffer, cmd_len)) == 0)
 		return;
 	token_preprocessor(tokens, no_tokens);
-	for (int i = 0; i < no_tokens; i++) {
-		printf("arg %d: %s\n", i, tokens[i]);
-	}
-	fflush(stdout);
-	start_program(tokens, no_tokens);
+	execute_background_program(tokens, no_tokens);
 	free(tokens);
 }
 
@@ -134,6 +148,6 @@ int main(int argc, char **argv)
 		interactive_start();
 	}
 
-	printf("\n");
+	printf("\n\e[0;32m======\e[0m\nGoodbye\n\e[0;32m======\e[0m\n");
 	return 0;
 }
