@@ -3,10 +3,12 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/wait.h>
 
 #define BUFFERSIZE 1024
 #define MAXTOKENS 64
+#define MAXCMDS 64
 
 #define LOG_ERR(fmt, ...)                                             \
 	fprintf(stderr, "%s:%d (%s) - " fmt "\n", __FILE__, __LINE__, \
@@ -27,7 +29,6 @@ void free_tokens(char **tokens, int no_tokens)
 {
 	for (int i = 0; i < no_tokens; i++)
 		free(tokens[i]);
-	free(tokens);
 }
 
 char *create_token(char *start, char *end)
@@ -68,7 +69,8 @@ int tokenize(char **tokens, int max_tokens, char *cmd, int cmd_len)
 			}
 			token = cmd + i + 1;
 		} else if (cmd[i] == ' ' || cmd[i] == '\0') {
-			if (strncmp(token, " ", 1) != 0)
+			if (strncmp(token, "", 1) != 0 &&
+			    strncmp(token, " ", 1) != 0)
 				tokens[no_tokens++] =
 					create_token(token, cmd + i);
 			token = cmd + i + 1;
@@ -127,7 +129,7 @@ int get_input_string(char *buffer, int buffersize)
 	return i;
 }
 
-void execute_program(char **tokens, int no_tokens, int _wait)
+int execute_program(char **tokens, int no_tokens, int _wait)
 {
 	pid_t pid = fork();
 	if (pid == 0) {
@@ -139,26 +141,29 @@ void execute_program(char **tokens, int no_tokens, int _wait)
 	} else if (pid > 0) {
 		if (_wait)
 			waitpid(pid, NULL, 0);
+		else
+			return pid;
 	} else {
 		LOG_ERR("%s", strerror(errno));
 	}
+	return -1;
 }
 
-void execute_sequential_program(char **tokens, int no_tokens)
+int execute_sequential_program(char **tokens, int no_tokens)
 {
-	execute_program(tokens, no_tokens, 1);
+	return execute_program(tokens, no_tokens, 1);
 }
 
-void execute_background_program(char **tokens, int no_tokens)
+int execute_background_program(char **tokens, int no_tokens)
 {
-	execute_program(tokens, no_tokens, 0);
+	return execute_program(tokens, no_tokens, 0);
 }
 
 void interactive_start()
 {
 	char buffer[BUFFERSIZE];
-	char **tokens = malloc(sizeof(char *) * MAXTOKENS);
-	int cmd_len, no_tokens;
+	char **tokens = malloc(sizeof(char *) * MAXTOKENS), **tmp;
+	int cmd_len, no_tokens, pids[MAXCMDS], n = 0;
 
 	printf("witsshell>");
 	cmd_len = get_input_string(buffer, BUFFERSIZE);
@@ -166,8 +171,26 @@ void interactive_start()
 	if ((no_tokens = tokenize(tokens, MAXTOKENS, buffer, cmd_len)) == 0)
 		goto end;
 	token_preprocessor(tokens, no_tokens);
+
+	tmp = tokens;
+	for (int i = 0; i <= no_tokens; i++) {
+		if (i == no_tokens && tmp != tokens + i) {
+			execute_sequential_program(tmp, tokens + i - tmp);
+		} else if (tokens[i] != NULL &&
+			   strncmp(tokens[i], "&", 2) == 0) {
+			tokens[i] = NULL;
+			pids[n++] = execute_background_program(
+				tmp, tokens + i - tmp);
+			tmp = tokens + i + 1;
+		}
+	}
+	for (int i = 0; i < MAXTOKENS; i++) {
+		if (pids[i] > 0)
+			waitpid(pids[i], NULL, 0);
+	}
 end:;
 	free_tokens(tokens, no_tokens);
+	free(tokens);
 }
 
 int main(int argc, char **argv)
