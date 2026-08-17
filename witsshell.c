@@ -16,7 +16,7 @@ int tokenize(char **tokens, int max_tokens, char *cmd, int cmd_len)
 	char *token = cmd, quote;
 	int i = 0, is_quoted = 0, no_tokens = 0;
 
-	while (i <= cmd_len && no_tokens < max_tokens) {
+	while (i <= cmd_len && no_tokens < max_tokens - 1) {
 		if (is_quoted) {
 			if (cmd[i] == quote && cmd[i - 1] != '\\') {
 				is_quoted = 0;
@@ -26,7 +26,8 @@ int tokenize(char **tokens, int max_tokens, char *cmd, int cmd_len)
 			quote = cmd[i];
 		} else if (cmd[i] == ' ' || cmd[i] == '\0') {
 			cmd[i] = '\0';
-			tokens[no_tokens++] = token;
+			if (!strncmp(token, "", 1) == 0)
+				tokens[no_tokens++] = token;
 			token = cmd + i + 1;
 		}
 		i++;
@@ -37,6 +38,7 @@ int tokenize(char **tokens, int max_tokens, char *cmd, int cmd_len)
 		return 0;
 	}
 
+	tokens[no_tokens] = NULL;
 	return no_tokens;
 }
 
@@ -60,19 +62,20 @@ void token_preprocessor(char **tokens, int no_tokens)
 
 int get_input_string(char *buffer, int buffersize)
 {
-	int i = 0, is_quoted;
+	int i = 0, is_quoted = 0;
 	char c, quote;
 
 	while (i < buffersize - 1) {
-		if ((c = fgetc(stdin)) == '\n' && !is_quoted)
+		if ((c = fgetc(stdin)) == '\n' && !is_quoted) {
 			break;
-		else if (is_quoted && c == quote && buffer[i - 1] != '\\') {
+		} else if (is_quoted && c == quote && buffer[i - 1] != '\\') {
 			is_quoted = 0;
 		} else if (c == '"' || c == '\'' || c == '`') {
 			is_quoted = 1;
 			quote = c;
 		} else if (c == '\n') {
 			buffer[i++] = ' ';
+			printf(">");
 			continue;
 		}
 		buffer[i++] = c;
@@ -96,8 +99,10 @@ void interactive_start()
 		return;
 	token_preprocessor(tokens, no_tokens);
 	for (int i = 0; i < no_tokens; i++) {
-		printf("%d: %s\n", i, tokens[i]);
+		printf("arg %d: %s\n", i, tokens[i]);
 	}
+	fflush(stdout);
+	free(tokens);
 }
 
 int main(int argc, char **argv)
