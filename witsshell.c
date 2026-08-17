@@ -129,11 +129,29 @@ int get_input_string(char *buffer, int buffersize)
 	return i;
 }
 
+void redirect(char *filename)
+{
+	mode_t mode = S_IFREG | S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH;
+	int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, mode);
+	if (fd == -1) {
+		LOG_ERR("%s", strerror(errno));
+		return;
+	}
+	dup2(fd, STDOUT_FILENO);
+	dup2(fd, STDERR_FILENO);
+	close(fd);
+}
+
 int execute_program(char **tokens, int no_tokens, int _wait)
 {
 	pid_t pid = fork();
 	if (pid == 0) {
 		// child process
+		if (no_tokens >= 3 &&
+		    strncmp(tokens[no_tokens - 2], ">\0", 2) == 0) {
+			redirect(tokens[no_tokens - 1]);
+			tokens[no_tokens - 2] = NULL;
+		}
 		execv(tokens[0], tokens);
 
 		LOG_ERR("%s", strerror(errno));
