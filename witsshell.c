@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
 #define BUFFERSIZE 1024
 #define MAXTOKENS 64
@@ -85,6 +86,22 @@ int get_input_string(char *buffer, int buffersize)
 	return i;
 }
 
+void execute_program(char **tokens, int no_tokens)
+{
+	pid_t pid = fork();
+	if (pid == 0) {
+		// child process
+		execv(tokens[0], tokens);
+
+		LOG_ERR("%s", strerror(errno));
+		_exit(errno);
+	} else if (pid > 0) {
+		waitpid(pid, NULL, 0);
+	} else {
+		LOG_ERR("%s", strerror(errno));
+	}
+}
+
 void interactive_start()
 {
 	char buffer[BUFFERSIZE];
@@ -102,6 +119,7 @@ void interactive_start()
 		printf("arg %d: %s\n", i, tokens[i]);
 	}
 	fflush(stdout);
+	start_program(tokens, no_tokens);
 	free(tokens);
 }
 
