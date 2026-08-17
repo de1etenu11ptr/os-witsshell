@@ -11,6 +11,9 @@
 #define LOG_ERR(fmt, ...)                                             \
 	fprintf(stderr, "%s:%d (%s) - " fmt "\n", __FILE__, __LINE__, \
 		__func__ __VA_OPT__(, ) __VA_ARGS__)
+#define IS_QUOTE(chr) chr == '"' || chr == '\'' || chr == '`'
+#define IS_PARALLEL(chr) chr == '&'
+#define IS_REDIRECTION(chr) chr == '>'
 
 void print_tokens(char **tokens, int no_tokens)
 {
@@ -18,6 +21,22 @@ void print_tokens(char **tokens, int no_tokens)
 		printf("arg %d: %s\n", i, tokens[i]);
 	}
 	fflush(stdout);
+}
+
+void free_tokens(char **tokens, int no_tokens)
+{
+	for (int i = 0; i < no_tokens; i++)
+		free(tokens[i]);
+	free(tokens);
+}
+
+char *create_token(char *start, char *end)
+{
+	int len = end - start;
+	char *token = malloc(sizeof(char) * (len + 1));
+	memcpy(token, start, len);
+	token[len] = '\0';
+	return token;
 }
 
 int tokenize(char **tokens, int max_tokens, char *cmd, int cmd_len)
@@ -30,13 +49,28 @@ int tokenize(char **tokens, int max_tokens, char *cmd, int cmd_len)
 			if (cmd[i] == quote && cmd[i - 1] != '\\') {
 				is_quoted = 0;
 			}
-		} else if (cmd[i] == '"' || cmd[i] == '\'' || cmd[i] == '`') {
+		} else if (IS_QUOTE(cmd[i])) {
 			is_quoted = 1;
 			quote = cmd[i];
+		} else if (IS_PARALLEL(cmd[i]) || IS_REDIRECTION(cmd[i])) {
+			if (cmd[i - 1] == ' ' || IS_PARALLEL(cmd[i - 1]) ||
+			    IS_REDIRECTION(cmd[i - 1]))
+				tokens[no_tokens++] =
+					create_token(token, token + 1);
+			else {
+				// create token of previous "word"
+				tokens[no_tokens++] =
+					create_token(token, cmd + i);
+				token = cmd + i;
+				// create token of special symbol
+				tokens[no_tokens++] =
+					create_token(token, token + 1);
+			}
+			token = cmd + i + 1;
 		} else if (cmd[i] == ' ' || cmd[i] == '\0') {
-			cmd[i] = '\0';
-			if (!strncmp(token, "", 1) == 0)
-				tokens[no_tokens++] = token;
+			if (strncmp(token, " ", 1) != 0)
+				tokens[no_tokens++] =
+					create_token(token, cmd + i);
 			token = cmd + i + 1;
 		}
 		i++;
@@ -58,8 +92,7 @@ void token_preprocessor(char **tokens, int no_tokens)
 		int read = 0, write = 0;
 
 		while (token[read]) {
-			if (token[read] == '"' || token[read] == '\'' ||
-			    token[read] == '`') {
+			if (IS_QUOTE(token[read])) {
 				read++;
 				continue;
 			}
@@ -79,7 +112,7 @@ int get_input_string(char *buffer, int buffersize)
 			break;
 		} else if (is_quoted && c == quote && buffer[i - 1] != '\\') {
 			is_quoted = 0;
-		} else if (c == '"' || c == '\'' || c == '`') {
+		} else if (IS_QUOTE(c)) {
 			is_quoted = 1;
 			quote = c;
 		} else if (c == '\n') {
@@ -131,10 +164,10 @@ void interactive_start()
 	cmd_len = get_input_string(buffer, BUFFERSIZE);
 
 	if ((no_tokens = tokenize(tokens, MAXTOKENS, buffer, cmd_len)) == 0)
-		return;
+		goto end;
 	token_preprocessor(tokens, no_tokens);
-	execute_background_program(tokens, no_tokens);
-	free(tokens);
+end:;
+	free_tokens(tokens, no_tokens);
 }
 
 int main(int argc, char **argv)
