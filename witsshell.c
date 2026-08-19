@@ -10,9 +10,15 @@
 #define MAXTOKENS 64
 #define MAXCMDS 64
 
+#ifdef DEBUG
 #define LOG_ERR(fmt, ...)                                             \
 	fprintf(stderr, "%s:%d (%s) - " fmt "\n", __FILE__, __LINE__, \
 		__func__ __VA_OPT__(, ) __VA_ARGS__)
+#else
+#define LOG_ERR(fmt, ...) \
+	fprintf(stderr, "Error: " fmt "\n" __VA_OPT__(, ) __VA_ARGS__)
+#endif
+
 #define IS_QUOTE(chr) chr == '"' || chr == '\'' || chr == '`'
 #define IS_PARALLEL(chr) chr == '&'
 #define IS_REDIRECTION(chr) chr == '>'
@@ -28,7 +34,10 @@ void print_tokens(char **tokens, int no_tokens)
 void free_tokens(char **tokens, int no_tokens)
 {
 	for (int i = 0; i < no_tokens; i++)
-		free(tokens[i]);
+		if (tokens[i] != NULL) {
+			free(tokens[i]);
+			tokens[i] = NULL;
+		}
 }
 
 char *create_token(char *start, char *end)
@@ -177,24 +186,10 @@ int execute_background_program(char **tokens, int no_tokens)
 	return execute_program(tokens, no_tokens, 0);
 }
 
-void interactive_start()
+void process_line(char **tokens, int no_tokens)
 {
-	char *cmd = NULL, **tmp;
-	char **tokens = malloc(sizeof(char *) * MAXTOKENS);
-	if (tokens == NULL)
-		return;
-	int no_tokens = 0, pids[MAXCMDS], n = 0;
-	size_t cmd_len, len;
-
-	printf("witsshell>");
-	if ((cmd_len = getline(&cmd, &len, stdin)) == -1 ||
-	    cmd[cmd_len - 1] != '\n' ||
-	    (no_tokens = tokenize(tokens, MAXTOKENS, cmd, cmd_len)) == 0)
-		goto end;
-	cmd[--cmd_len] = '\0';
-	token_preprocessor(tokens, no_tokens);
-
-	tmp = tokens;
+	int pids[MAXCMDS], n = 0;
+	char **tmp = tokens;
 	for (int i = 0; i <= no_tokens; i++) {
 		if (i == no_tokens && tmp != tokens + i) {
 			execute_sequential_program(tmp, tokens + i - tmp);
@@ -210,11 +205,54 @@ void interactive_start()
 		if (pids[i] > 0)
 			waitpid(pids[i], NULL, 0);
 	}
+}
+
+void start(FILE *stream)
+{
+	char *cmd = NULL;
+	char **tokens = malloc(sizeof(char *) * MAXTOKENS);
+	if (tokens == NULL)
+		return;
+	int no_tokens = 0;
+	size_t cmd_len, len;
+
+	while (true) {
+		if (stream == stdin)
+			printf("witsshell>");
+		if ((cmd_len = getline(&cmd, &len, stream)) == -1 ||
+		    cmd[cmd_len - 1] != '\n')
+			goto end;
+		cmd[--cmd_len] = '\0';
+		if ((no_tokens = tokenize(tokens, MAXTOKENS, cmd, cmd_len)) ==
+		    0)
+			goto end;
+		token_preprocessor(tokens, no_tokens);
+
+		process_line(tokens, no_tokens);
+
+		free_tokens(tokens, no_tokens);
+		free(cmd);
+		cmd = NULL;
+	}
 end:;
 	free_tokens(tokens, no_tokens);
 	free(tokens);
-	if (cmd)
+	if (cmd != NULL)
 		free(cmd);
+}
+
+void interactive_start()
+{
+	start(stdin);
+}
+
+void batch_start(char *filename)
+{
+	FILE *file = fopen(filename, "r");
+	if (file == NULL)
+		return;
+	start(file);
+	fclose(file);
 }
 
 int main(int argc, char **argv)
@@ -226,6 +264,8 @@ int main(int argc, char **argv)
 
 	if (argc == 1) {
 		interactive_start();
+	} else {
+		batch_start(argv[1]);
 	}
 
 	return 0;

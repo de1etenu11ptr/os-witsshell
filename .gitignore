@@ -1,2 +1,4 @@
 *.o
 witsshell
+*.script
+tmp*.txt

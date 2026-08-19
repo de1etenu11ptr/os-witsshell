@@ -1,6 +1,12 @@
 CC=gcc
 CFLAGS=-Wall -Werror -g
 
+ifdef DEBUG
+ifneq ($(DEBUG), 0)
+	CFLAGS+= -DDEBUG
+endif
+endif
+
 TARGET=witsshell
 
 SOURCES=$(shell find ./ -type f -iname "*.c")
