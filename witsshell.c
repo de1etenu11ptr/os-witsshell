@@ -41,6 +41,7 @@ void free_paths()
 		free(paths);
 		paths = NULL;
 	}
+	no_paths = 0;
 }
 
 struct built_in_command {
@@ -64,6 +65,8 @@ void change_path_list(char **tokens, int no_tokens)
 {
 	free_paths();
 	no_paths = no_tokens - 1;
+	if (no_tokens == 0)
+		return;
 	paths = malloc(sizeof(char *) * no_paths);
 	for (int i = 1; i <= no_paths; i++) {
 		int len = strlen(tokens[i]);
@@ -222,17 +225,43 @@ int get_input_string(char *buffer, int buffersize)
 	return i;
 }
 
-void redirect(char *filename)
+int redirect_output_streams(char *filename)
 {
 	mode_t mode = S_IFREG | S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH;
 	int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, mode);
 	if (fd == -1) {
 		LOG_ERR("%s", strerror(errno));
-		return;
+		return -1;
 	}
 	dup2(fd, STDOUT_FILENO);
 	dup2(fd, STDERR_FILENO);
 	close(fd);
+	return 0;
+}
+
+int redirect(char **tokens, int *no_tokens)
+{
+	int counter = 0;
+	for (int i = 0; i < *no_tokens; i++) {
+		if (strncmp(tokens[i], ">\0", 2) == 0)
+			counter++;
+		if (counter > 1) {
+			LOG_ERR("Only one \">\" symbol is allowed per command");
+			return -1;
+		}
+	}
+	if (counter == 0)
+		return 0;
+	if (*no_tokens >= 3 && strncmp(tokens[*no_tokens - 2], ">\0", 2) == 0) {
+		if (redirect_output_streams(tokens[*no_tokens - 1]) == -1)
+			return -1;
+		tokens[*no_tokens - 2] = NULL;
+		*no_tokens -= 2;
+	} else {
+		LOG_ERR("\">\" symbol must followed by a filepath");
+		return -1;
+	}
+	return 0;
 }
 
 int execute_program(char **tokens, int no_tokens, int _wait)
@@ -240,16 +269,8 @@ int execute_program(char **tokens, int no_tokens, int _wait)
 	pid_t pid = fork();
 	if (pid == 0) {
 		// child process
-		if (no_tokens >= 3 &&
-		    strncmp(tokens[no_tokens - 2], ">\0", 2) == 0) {
-			redirect(tokens[no_tokens - 1]);
-			if (strncmp(tokens[no_tokens - 1], ">\0", 2) == 0) {
-				LOG_ERR("Can't provide consecutive \">\" symbols");
-				_exit(1);
-			}
-			tokens[no_tokens - 2] = NULL;
-			no_tokens -= 2;
-		}
+		if (redirect(tokens, &no_tokens) == -1)
+			goto end;
 		for (int i = 0; i < no_paths; i++) {
 			int path_len = strlen(paths[i]);
 			int len = path_len + strlen(tokens[0]);
@@ -267,6 +288,7 @@ int execute_program(char **tokens, int no_tokens, int _wait)
 		}
 
 		LOG_ERR("%s", strerror(errno));
+end:;
 		_exit(1);
 	} else if (pid > 0) {
 		if (_wait)
@@ -276,7 +298,7 @@ int execute_program(char **tokens, int no_tokens, int _wait)
 	} else {
 		LOG_ERR("%s", strerror(errno));
 	}
-	return -1;
+	return 1;
 }
 
 int execute_sequential_program(char **tokens, int no_tokens)
