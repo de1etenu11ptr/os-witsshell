@@ -152,7 +152,7 @@ int execute_program(char **tokens, int no_tokens, int _wait)
 			redirect(tokens[no_tokens - 1]);
 			tokens[no_tokens - 2] = NULL;
 		}
-		execv(tokens[0], tokens);
+		execvp(tokens[0], tokens);
 
 		LOG_ERR("%s", strerror(errno));
 		_exit(errno);
@@ -222,6 +222,5 @@ int main(int argc, char **argv)
 		interactive_start();
 	}
 
-	printf("\n\e[0;32m======\e[0m\nGoodbye\n\e[0;32m======\e[0m\n");
 	return 0;
 }
