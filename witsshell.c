@@ -179,15 +179,19 @@ int execute_background_program(char **tokens, int no_tokens)
 
 void interactive_start()
 {
-	char buffer[BUFFERSIZE];
-	char **tokens = malloc(sizeof(char *) * MAXTOKENS), **tmp;
-	int cmd_len, no_tokens, pids[MAXCMDS], n = 0;
+	char *cmd = NULL, **tmp;
+	char **tokens = malloc(sizeof(char *) * MAXTOKENS);
+	if (tokens == NULL)
+		return;
+	int no_tokens = 0, pids[MAXCMDS], n = 0;
+	size_t cmd_len, len;
 
 	printf("witsshell>");
-	cmd_len = get_input_string(buffer, BUFFERSIZE);
-
-	if ((no_tokens = tokenize(tokens, MAXTOKENS, buffer, cmd_len)) == 0)
+	if ((cmd_len = getline(&cmd, &len, stdin)) == -1 ||
+	    cmd[cmd_len - 1] != '\n' ||
+	    (no_tokens = tokenize(tokens, MAXTOKENS, cmd, cmd_len)) == 0)
 		goto end;
+	cmd[--cmd_len] = '\0';
 	token_preprocessor(tokens, no_tokens);
 
 	tmp = tokens;
@@ -209,6 +213,8 @@ void interactive_start()
 end:;
 	free_tokens(tokens, no_tokens);
 	free(tokens);
+	if (cmd)
+		free(cmd);
 }
 
 int main(int argc, char **argv)
