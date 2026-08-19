@@ -99,11 +99,13 @@ static const int no_built_in_cmds = 3;
 int built_in(char **tokens, int no_tokens)
 {
 	for (int i = 0; i < no_built_in_cmds; i++) {
-		if (built_in_cmds[i].no_args != -1 &&
-		    no_tokens - 1 != built_in_cmds[i].no_args)
-			continue;
 		if (strcmp(built_in_cmds[i].command, tokens[0]) == 0) {
 			built_in_cmds[i].func(tokens, no_tokens);
+			if (built_in_cmds[i].no_args != -1 &&
+			    no_tokens - 1 != built_in_cmds[i].no_args) {
+				LOG_ERR("Incorrect number of arguments passed");
+				return 1;
+			}
 			return 1;
 		}
 	}
