@@ -15,8 +15,9 @@
 	fprintf(stderr, "%s:%d (%s) - " fmt "\n", __FILE__, __LINE__, \
 		__func__ __VA_OPT__(, ) __VA_ARGS__)
 #else
-#define LOG_ERR(fmt, ...) \
-	fprintf(stderr, "Error: " fmt "\n" __VA_OPT__(, ) __VA_ARGS__)
+#define LOG_ERR(fmt, ...)                                   \
+	char error_message[30] = "An error has occurred\n"; \
+	write(STDERR_FILENO, error_message, strlen(error_message));
 #endif
 
 #define IS_QUOTE(chr) chr == '"' || chr == '\'' || chr == '`'
@@ -164,7 +165,7 @@ int execute_program(char **tokens, int no_tokens, int _wait)
 		execvp(tokens[0], tokens);
 
 		LOG_ERR("%s", strerror(errno));
-		_exit(errno);
+		_exit(1);
 	} else if (pid > 0) {
 		if (_wait)
 			waitpid(pid, NULL, 0);
@@ -249,8 +250,10 @@ void interactive_start()
 void batch_start(char *filename)
 {
 	FILE *file = fopen(filename, "r");
-	if (file == NULL)
-		return;
+	if (file == NULL) {
+		LOG_ERR("%s", strerror(errno));
+		exit(1);
+	}
 	start(file);
 	fclose(file);
 }
@@ -259,7 +262,7 @@ int main(int argc, char **argv)
 {
 	if (argc >= 3) {
 		fprintf(stderr, "Usage: ./witsshell [batchfile]\n");
-		return 1;
+		exit(1);
 	}
 
 	if (argc == 1) {
