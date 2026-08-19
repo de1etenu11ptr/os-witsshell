@@ -15,14 +15,97 @@
 	fprintf(stderr, "%s:%d (%s) - " fmt "\n", __FILE__, __LINE__, \
 		__func__ __VA_OPT__(, ) __VA_ARGS__)
 #else
-#define LOG_ERR(fmt, ...)                                   \
-	char error_message[30] = "An error has occurred\n"; \
-	write(STDERR_FILENO, error_message, strlen(error_message));
+#define LOG_ERR(fmt, ...)                                                   \
+	do {                                                                \
+		char error_message[30] = "An error has occurred\n";         \
+		write(STDERR_FILENO, error_message, strlen(error_message)); \
+	} while (false)
+
 #endif
 
 #define IS_QUOTE(chr) chr == '"' || chr == '\'' || chr == '`'
 #define IS_PARALLEL(chr) chr == '&'
 #define IS_REDIRECTION(chr) chr == '>'
+
+static char **paths = NULL;
+static int no_paths = 0;
+
+void free_paths()
+{
+	for (int i = 0; i < no_paths; i++)
+		if (paths[i] != NULL) {
+			free(paths[i]);
+			paths[i] = NULL;
+		}
+	if (paths != NULL) {
+		free(paths);
+		paths = NULL;
+	}
+}
+
+struct built_in_command {
+	const char *command;
+	const int no_args;
+	void (*func)(char **, int);
+};
+
+void program_exit(char **tokens, int no_tokens)
+{
+	exit(1);
+}
+
+void change_directory(char **tokens, int no_tokens)
+{
+	if (chdir(tokens[1]) == -1)
+		LOG_ERR("%s", strerror(errno));
+}
+
+void change_path_list(char **tokens, int no_tokens)
+{
+	free_paths();
+	no_paths = no_tokens - 1;
+	paths = malloc(sizeof(char *) * no_paths);
+	for (int i = 1; i <= no_paths; i++) {
+		int len = strlen(tokens[i]);
+		paths[i - 1] = malloc(sizeof(char) * (len + 1));
+		memcpy(paths[i - 1], tokens[i], len);
+		paths[i - 1][len] = '\0';
+	}
+}
+
+void print_path_list(char **tokens, int no_tokens)
+{
+	for (int i = 0; i < no_paths; i++) {
+		printf("%s\n", paths[i]);
+	}
+}
+
+static const struct built_in_command built_in_cmds[] = {
+	{ "exit", 0, program_exit },
+	{ "cd", 1, change_directory },
+	{ "path", -1, change_path_list },
+#ifdef DEBUG
+	{ "print_path", 0, print_path_list }
+};
+static const int no_built_in_cmds = 4;
+#else
+};
+static const int no_built_in_cmds = 3;
+#endif
+
+int built_in(char **tokens, int no_tokens)
+{
+	for (int i = 0; i < no_built_in_cmds; i++) {
+		if (built_in_cmds[i].no_args != -1 &&
+		    no_tokens - 1 != built_in_cmds[i].no_args)
+			continue;
+		if (strcmp(built_in_cmds[i].command, tokens[0]) == 0) {
+			built_in_cmds[i].func(tokens, no_tokens);
+			return 1;
+		}
+	}
+	return 0;
+}
 
 void print_tokens(char **tokens, int no_tokens)
 {
@@ -160,9 +243,28 @@ int execute_program(char **tokens, int no_tokens, int _wait)
 		if (no_tokens >= 3 &&
 		    strncmp(tokens[no_tokens - 2], ">\0", 2) == 0) {
 			redirect(tokens[no_tokens - 1]);
+			if (strncmp(tokens[no_tokens - 1], ">\0", 2) == 0) {
+				LOG_ERR("Can't provide consecutive \">\" symbols");
+				_exit(1);
+			}
 			tokens[no_tokens - 2] = NULL;
+			no_tokens -= 2;
 		}
-		execvp(tokens[0], tokens);
+		for (int i = 0; i < no_paths; i++) {
+			int path_len = strlen(paths[i]);
+			int len = path_len + strlen(tokens[0]);
+			char *path = malloc(sizeof(char) * len + 1);
+			memcpy(path, paths[i], path_len);
+			memcpy(path + path_len, tokens[0], len - path_len);
+			path[len] = '\0';
+
+			if (access(path, F_OK | X_OK) == 0) {
+				free(tokens[0]);
+				tokens[0] = path;
+				execv(path, tokens);
+				break;
+			}
+		}
 
 		LOG_ERR("%s", strerror(errno));
 		_exit(1);
@@ -229,7 +331,8 @@ void start(FILE *stream)
 			goto end;
 		token_preprocessor(tokens, no_tokens);
 
-		process_line(tokens, no_tokens);
+		if (!built_in(tokens, no_tokens))
+			process_line(tokens, no_tokens);
 
 		free_tokens(tokens, no_tokens);
 		free(cmd);
@@ -264,6 +367,10 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Usage: ./witsshell [batchfile]\n");
 		exit(1);
 	}
+	paths = malloc(sizeof(char *));
+	paths[0] = malloc(sizeof(char) * 6);
+	memcpy(paths[0], "/bin/", 6);
+	no_paths = 1;
 
 	if (argc == 1) {
 		interactive_start();
@@ -271,5 +378,6 @@ int main(int argc, char **argv)
 		batch_start(argv[1]);
 	}
 
+	free_paths();
 	return 0;
 }
